@@ -14,8 +14,6 @@ find_package(rosidl_default_generators REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/Goal.msg"
   "msg/SemaphoreState.msg"
-  "msg/TargetFeatures.msg"
-  "msg/ObstacleFeatures.msg"
   DEPENDENCIES std_msgs geometry_msgs
 )
 
@@ -28,11 +26,6 @@ install(PROGRAMS
   scripts/analyze.py
   scripts/traffic_light_detector.py
   scripts/hsv_calibrator.py
-  scripts/target_detector.py
-  scripts/vs_controller.py
-  scripts/color_features_detector.py
-  scripts/safe_vs_controller.py
-  scripts/cmd_vel_to_wheels.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

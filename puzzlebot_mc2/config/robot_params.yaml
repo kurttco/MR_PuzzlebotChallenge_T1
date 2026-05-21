@@ -1,0 +1,61 @@
+# robot_params.yaml
+# Parametros fisicos y de calibracion del PuzzleBot.
+# Consumido por: odometry_node, cmd_vel_bridge.
+
+/**:
+  ros__parameters:
+    # Dimensiones fisicas (medidas)
+    wheel_radius: 0.045      # m  (diametro 9 cm)
+    wheel_base:   0.18       # m  (separacion entre centros de ruedas)
+
+    # Calibracion empirica de MC2 (mantener hasta re-medir con firmware actual)
+    # cmd=1.0 en ambas ruedas -> v_robot = k_lin m/s
+    # cmd_L=-1, cmd_R=+1      -> w_robot = k_ang rad/s
+    k_lin: 0.08             # m/s por unidad de cmd
+    k_ang: 0.561             # rad/s por unidad de cmd
+
+    # Limites del comando
+    max_cmd: 3.0             # saturacion del Float32 que acepta el firmware
+
+    # ============================================================
+    # Trim por rueda (compensa asimetria fisica de los motores)
+    # ============================================================
+    # Si el robot deriva al ir recto, ajustar estos valores.
+    # Default 1.0 / 1.0 = sin correccion.
+    #
+    # Procedimiento:
+    #   1. Poner el robot en el piso, sin obstaculos.
+    #   2. Publicar v=0.1, omega=0 durante 3 s:
+    #        ros2 topic pub --rate 10 /cmd_vel geometry_msgs/Twist \
+    #          "{linear: {x: 0.10}, angular: {z: 0.0}}"
+    #      (Ctrl+C para parar.)
+    #   3. Observar la deriva:
+    #        - Deriva a la IZQUIERDA -> rueda derecha sobre-gira
+    #          -> BAJAR right_gain (por ejemplo 0.95) o subir left_gain.
+    #        - Deriva a la DERECHA -> rueda izquierda sobre-gira
+    #          -> BAJAR left_gain o subir right_gain.
+    #   4. Ajustar en saltos de 0.05 hasta que vaya recto.  Suele ser
+    #      cuestion de 2-3 iteraciones.
+    left_gain:  1.2
+    right_gain: 1.0
+
+    # ============================================================
+    # Compensacion de deadzone del motor
+    # ============================================================
+    # El motor del PuzzleBot tiene una zona muerta: si |cmd| < ~0.30, la
+    # rueda no rompe la friccion estatica y no se mueve.  En curvas
+    # cerradas a velocidad baja, una rueda puede caer en esa zona mientras
+    # la otra esta arriba -> resultado: una rueda gira y la otra no, lo
+    # que se ve como pivot/zigzag.
+    #
+    # motor_deadzone: magnitud minima que SI mueve la rueda.  En este
+    #   robot ~0.30 segun la calibracion de MC2.  Si tu PuzzleBot necesita
+    #   un valor distinto, calibrar: comandar /VelocitySetL valores
+    #   crecientes (0.20, 0.22, 0.24, ...) hasta que la rueda empiece a
+    #   moverse.  Ese umbral es tu motor_deadzone.
+    #
+    # stop_threshold: si AMBAS ruedas piden menos que esto en magnitud,
+    #   el bridge las pone en cero (=robot detenido).  Esto es lo que
+    #   permite que el robot llegue a HOLD.  Debe ser <= motor_deadzone.
+    motor_deadzone: 0.30
+    stop_threshold: 0.25

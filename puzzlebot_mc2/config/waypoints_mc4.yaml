@@ -1,0 +1,23 @@
+# waypoints_mc4.yaml
+# Total: 6 waypoints = 5 segmentos.
+# Distancia total recorrida: 1 + 1 + 2 + 2 + 2 = 8 m.
+
+/**:
+  ros__parameters:
+    waypoints_x: [1.3, 1.9, 1.0, 0.3, -0.4]
+    waypoints_y: [0.8, 0.8, 1.7, 1.35, 0.8]
+
+    # NOTA: el path_generator interpreta el origen (0,0) como punto de
+    # partida implicito, asi que la lista de arriba describe los 5 destinos
+    # despues del origen.  Sumando el inicial: 6 puntos en total.
+
+    # Bounding box del workspace (2x2 m con margen)
+    workspace_min_x: -1.3
+    workspace_max_x: 2.3
+    workspace_min_y: -0.3
+    workspace_max_y: 2.3
+
+    v_max_for_check: 0.20
+    goal_timeout_s: 90.0
+    publish_delay_s: 3.0
+    inter_goal_pause_s: 1.0

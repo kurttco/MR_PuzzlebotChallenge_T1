@@ -1,0 +1,23 @@
+# waypoints_square.yaml
+# Parte 1 del MC2: cuadrado de 2 m por lado, desde (0,0).
+
+/**:
+  ros__parameters:
+    waypoints_x: [2.0, 2.0, 0.0, 0.0]
+    waypoints_y: [0.0, 2.0, 2.0, 0.0]
+
+    # Bounding box del workspace para validar alcanzabilidad geometrica
+    workspace_min_x: -0.5
+    workspace_max_x: 3.0
+    workspace_min_y: -0.5
+    workspace_max_y: 3.0
+
+    # Validacion dinamica: si t_estimado > timeout, se rechaza
+    v_max_for_check: 0.15
+    goal_timeout_s: 60.0
+
+    # Delay antes del primer goal (para que suban otros nodos)
+    publish_delay_s: 3.0
+
+    # Pausa entre goals (deja que el robot asiente)
+    inter_goal_pause_s: 1.0

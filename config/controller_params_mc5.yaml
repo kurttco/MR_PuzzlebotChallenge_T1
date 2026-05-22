@@ -1,0 +1,93 @@
+# controller_params_mc5.yaml
+# Controller parameters for MC5 (line following + traffic light).
+# Plain ASCII only.
+
+/**:
+  ros__parameters:
+    control_mode: "line_following"
+
+    # ============================================================
+    # LINE FOLLOWING PID (angular only)
+    # ============================================================
+    # The line follower uses ONE PID on the normalized horizontal
+    # pixel error (range -1..+1). Output is angular velocity.
+    # Linear velocity is computed separately (see v_line_base).
+    kp_line: 0.5
+    ki_line: 0.0
+    kd_line: 0.05
+
+    # ============================================================
+    # Line following speed
+    # ============================================================
+    # v_line_base: linear velocity when line is centered (m/s).
+    # speed_curve_factor: how much to slow down in curves.
+    #   v_cmd = v_line_base * (1 - speed_curve_factor * |error|)
+    # With factor=0.5: at full error (|e|=1.0) the robot still
+    # moves at 50% of base speed. Lower factor = more aggressive
+    # in curves; higher factor = safer / smoother.
+    v_line_base: 0.10
+    speed_curve_factor: 0.5
+
+    # ============================================================
+    # Line lost behavior
+    # ============================================================
+    # If the detector reports line_detected=false for longer than
+    # this timeout (seconds), the robot stops completely.
+    # Below the timeout, it holds the last angular command at
+    # half speed (gives the camera time to re-acquire after a
+    # brief occlusion).
+    line_lost_timeout_s: 0.4
+
+    # ============================================================
+    # Actuator limits (shared with all modes)
+    # ============================================================
+    v_max: 0.20
+    omega_max: 0.45
+    v_slew_rate: 0.18
+    w_slew_rate: 0.8
+    integral_max: 0.5
+    derivative_filter_alpha: 0.2
+
+    # ============================================================
+    # Parameters required by the controller but not used in
+    # line_following mode (kept here for parameter declarations).
+    # ============================================================
+    kp_ang: 0.6
+    ki_ang: 0.0
+    kd_ang: 0.0
+    kp_lin: 0.4
+    ki_lin: 0.0
+    kd_lin: 0.0
+    sim_kp_lin: 0.3
+    sim_ki_lin: 0.0
+    sim_kp_ang: 0.6
+    sim_ki_ang: 0.0
+    epsilon_pos: 0.05
+    epsilon_ang: 0.05
+    hold_time: 0.0
+    approach_zone: 0.25
+    approach_zone_min_scale: 0.20
+    reorient_threshold: 0.35
+    move_heading_gain: 0.30
+
+    # ============================================================
+    # Logging
+    # ============================================================
+    log_csv: true
+    log_dir: "/tmp/puzzlebot_logs"
+    control_rate_hz: 20.0
+
+    # ============================================================
+    # Semaphore (set true for Part 2 with traffic light)
+    # ============================================================
+    enable_semaphore: false
+    semaphore_topic: "/semaphore_state"
+    yellow_speed_scale: 0.4
+    green_frames_to_release: 3
+    semaphore_timeout_s: 1.0
+
+    # ============================================================
+    # Line following input topics
+    # ============================================================
+    line_error_topic: "/line_error"
+    line_detected_topic: "/line_detected"

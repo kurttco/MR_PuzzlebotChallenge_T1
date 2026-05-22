@@ -1,0 +1,60 @@
+# line_detector_params.yaml
+# Parameters for the line_detector node (MC5).
+# Plain ASCII only — no special characters.
+
+/**:
+  ros__parameters:
+    image_topic: "/video_source/raw"
+
+    # ============================================================
+    # Region of Interest (vertical band of the image)
+    # ============================================================
+    # The line is sought only in a band near the bottom of the frame.
+    # This rejects walls, ceiling, and far-away noise.
+    # Ratios are fractions of image HEIGHT.
+    #   top    = 0.55 -> band starts at 55% from the top
+    #   bottom = 0.85 -> band ends at 85% from the top
+    # Full image width is used (no horizontal crop).
+    roi_top_ratio: 0.55
+    roi_bottom_ratio: 0.85
+
+    # ============================================================
+    # Preprocessing
+    # ============================================================
+    # Gaussian blur kernel (must be odd). Larger = more smoothing,
+    # less sensitive to dust / paper texture, but loses thin lines.
+    blur_kernel_size: 5
+
+    # Adaptive threshold: each pixel compared against the mean of its
+    # neighborhood (block_size x block_size), minus C.
+    # THRESH_BINARY_INV is used so dark lines become WHITE blobs.
+    # block_size must be odd. Larger block = sees broader context
+    # (good for thick lines), smaller = sharper local response.
+    # threshold_c shifts the threshold: higher C -> only darker pixels pass.
+    threshold_block_size: 31
+    threshold_c: 8
+
+    # Morphology kernel size (elliptical). Open removes specks,
+    # close fills small gaps inside the line.
+    morph_kernel_size: 5
+
+    # ============================================================
+    # Blob filters (after connectedComponentsWithStats)
+    # ============================================================
+    # min_blob_area: smaller than this -> noise, discarded.
+    # max_blob_area: bigger than this -> probably the floor itself
+    #   bleeding through (whole image flipped white), discarded.
+    min_blob_area: 300
+    max_blob_area: 50000
+
+    # Aspect ratio = height / width of the bounding box.
+    # A typical lane segment is taller than wide in the ROI ->
+    # require aspect >= 0.8. This rejects horizontal crosswalk
+    # dashes, which are much wider than tall.
+    min_aspect_ratio: 0.8
+
+    # ============================================================
+    # Output
+    # ============================================================
+    publish_debug_image: true
+    publish_rate_hz: 20.0

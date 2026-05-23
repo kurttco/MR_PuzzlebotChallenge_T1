@@ -296,7 +296,7 @@ ros2 launch puzzlebot_mc2 mc4_full.launch.py            # terminal 2
 Set `enable_semaphore: false` in `config/controller_params_mc5.yaml`, then:
 
 ```bash
-ros2 launch ros_deep_learning video_source.ros2.launch  # terminal 1
+ros2 launch ros_deep_learning video_source.ros2.launch input_width:=320 input_height:=240 # terminal 1
 ros2 launch puzzlebot_mc2 mc5_line_following.launch.py  # terminal 2
 ```
 

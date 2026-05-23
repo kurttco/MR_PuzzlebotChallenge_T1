@@ -22,11 +22,21 @@ Pipeline por frame:
         - circularidad > min_circularity   (4*pi*area / perimetro^2)
         - aspect ratio cuadrado-ish        (filtra rectangulos largos)
   6. Para cada color, queda el blob valido de mayor area (o ninguno).
-  7. Entre los tres colores, gana el de mayor area absoluta.
-  8. Publicar SemaphoreState con (state, confidence, area).
+  7. Entre los tres colores, gana el de mayor area absoluta -> raw state.
 
-NO se hace memoria del estado anterior aqui; eso le toca al controller
-(es donde la logica del 'red latch' tiene sentido conocer la trayectoria).
+Debounce:
+  El estado RAW debe mantenerse igual durante `debounce_frames` frames
+  consecutivos antes de convertirse en el estado CONFIRMADO que se
+  publica en /semaphore_state. Esto elimina los falsos positivos de
+  un solo frame (p. ej. un destello rojo de fondo).
+
+  - Si el raw state cambia, el contador se reinicia a 1.
+  - El estado confirmado solo se actualiza cuando el contador alcanza
+    debounce_frames. Mientras tanto se sigue publicando el estado
+    confirmado anterior.
+  - Consecuencia: una parada falsa de un frame nunca llega al
+    controlador; un color real tarda debounce_frames/publish_rate_hz
+    segundos en activarse (aprox 0.33 s con 5 frames a 15 Hz).
 """
 
 import math
@@ -87,6 +97,12 @@ class TrafficLightDetector(Node):
         self.declare_parameter('max_aspect_ratio', 1.4)
         self.declare_parameter('morph_kernel_size', 5)
 
+        # ================ debounce ================
+        # Numero de frames consecutivos del mismo color RAW requeridos
+        # antes de actualizar el estado CONFIRMADO que se publica.
+        # A 15 Hz: 5 frames = ~0.33 s, 8 frames = ~0.53 s.
+        self.declare_parameter('debounce_frames', 5)
+
         # ================ I/O ================
         self.declare_parameter('image_topic', '/video_source/raw')
         self.declare_parameter('publish_debug_image', True)
@@ -122,6 +138,17 @@ class TrafficLightDetector(Node):
         self.publish_debug = bool(
             self.get_parameter('publish_debug_image').value)
 
+        # ================ debounce state ================
+        self.debounce_frames = int(self.get_parameter('debounce_frames').value)
+        # Raw: what the detector sees this frame
+        self.candidate_state = ST_UNKNOWN
+        # How many consecutive frames we have seen candidate_state
+        self.candidate_streak = 0
+        # Confirmed: what actually gets published (only updates after debounce)
+        self.confirmed_state = ST_UNKNOWN
+        # Area of the confirmed blob (for confidence calculation)
+        self.confirmed_area = 0
+
         # ================ estado interno ================
         self.bridge = CvBridge()
         self.last_image = None
@@ -145,7 +172,9 @@ class TrafficLightDetector(Node):
         self.get_logger().info(
             f'Traffic light detector up | image={image_topic} | '
             f'min_area={self.min_area}px circ>{self.min_circ} '
-            f'ar=[{self.min_ar},{self.max_ar}]'
+            f'ar=[{self.min_ar},{self.max_ar}] | '
+            f'debounce={self.debounce_frames} frames '
+            f'(~{self.debounce_frames / rate:.2f}s at {rate:.0f}Hz)'
         )
 
     def _mk_range(self, h_lo_p, h_hi_p, s_lo_p, s_hi_p, v_lo_p, v_hi_p):
@@ -172,15 +201,11 @@ class TrafficLightDetector(Node):
             self.get_logger().warn(f'cv_bridge error: {e}')
 
     def _detect_color(self, hsv, ranges_list):
-        """Devuelve (best_contour_or_None, area_px). Aplica todos los rangos
-        del mismo color (rojo necesita 2) y selecciona el blob valido mas
-        grande tras filtros geometricos."""
-        # construir mascara combinando todos los sub-rangos del color
+        """Devuelve (best_contour_or_None, area_px)."""
         mask = None
         for lo, hi in ranges_list:
             m = cv2.inRange(hsv, lo, hi)
             mask = m if mask is None else cv2.bitwise_or(mask, m)
-        # limpieza morfologica
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, self.kernel)
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, self.kernel)
 
@@ -228,27 +253,52 @@ class TrafficLightDetector(Node):
             candidates.append((ST_GREEN, grn_c, grn_a))
 
         if not candidates:
-            state_id, contour, area = ST_UNKNOWN, None, 0
+            raw_state, raw_contour, raw_area = ST_UNKNOWN, None, 0
         else:
             candidates.sort(key=lambda x: x[2], reverse=True)
-            state_id, contour, area = candidates[0]
+            raw_state, raw_contour, raw_area = candidates[0]
 
-        # publish state
+        # ================ debounce ================
+        # If the raw reading matches the current candidate, extend the
+        # streak. If it differs, restart the streak from 1.
+        if raw_state == self.candidate_state:
+            self.candidate_streak += 1
+        else:
+            self.candidate_state = raw_state
+            self.candidate_streak = 1
+
+        # Only promote to confirmed once the streak reaches the threshold.
+        if self.candidate_streak >= self.debounce_frames:
+            self.confirmed_state = self.candidate_state
+            self.confirmed_area = raw_area
+
+        # ================ publish confirmed state ================
         msg = SemaphoreState()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = 'camera'
-        msg.state = int(state_id)
+        msg.state = int(self.confirmed_state)
         total = self.frame_w * self.frame_h
-        msg.confidence = float(area) / total if total > 0 else 0.0
-        msg.blob_pixel_area = int(area)
+        msg.confidence = float(self.confirmed_area) / total if total > 0 else 0.0
+        msg.blob_pixel_area = int(self.confirmed_area)
         self.pub_state.publish(msg)
 
-        # debug image
+        # ================ debug image ================
+        # Show all raw candidates with their contours, but the banner
+        # reflects the CONFIRMED state so you can see the debounce
+        # in action (raw detections appear as boxes before the banner
+        # colour changes).
         if self.pub_debug is not None:
-            self._publish_debug(img, candidates, state_id)
+            self._publish_debug(img, candidates, raw_state,
+                                self.confirmed_state,
+                                self.candidate_streak,
+                                self.debounce_frames)
 
-    def _publish_debug(self, img, candidates, winner_state):
+    def _publish_debug(self, img, candidates, raw_state, confirmed_state,
+                       streak, debounce_frames):
         dbg = img.copy()
+        H, W = dbg.shape[:2]
+
+        # Draw all detected raw contours with their labels
         for sid, c, area in candidates:
             if c is None:
                 continue
@@ -260,11 +310,30 @@ class TrafficLightDetector(Node):
                         (x, max(y - 5, 12)),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
 
-        # banner del estado actual
-        banner_color = ST_BGR[winner_state]
-        cv2.rectangle(dbg, (0, 0), (self.frame_w, 40), banner_color, -1)
-        cv2.putText(dbg, f'STATE: {ST_NAMES[winner_state]}',
-                    (10, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 0), 2)
+        # Top banner: CONFIRMED state colour
+        banner_color = ST_BGR[confirmed_state]
+        cv2.rectangle(dbg, (0, 0), (W, 50), banner_color, -1)
+
+        # Banner text: confirmed state + debounce progress bar
+        bar_filled = int((W - 20) * min(streak, debounce_frames) / debounce_frames)
+        bar_text = f'[{"#" * (bar_filled // 20)}{"-" * ((W - 20 - bar_filled) // 20)}]'
+
+        line1 = (f'CONFIRMED: {ST_NAMES[confirmed_state]}  '
+                 f'raw: {ST_NAMES[raw_state]}  '
+                 f'streak: {streak}/{debounce_frames}')
+        cv2.putText(dbg, line1, (8, 20),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 0), 2)
+        cv2.putText(dbg, line1, (8, 20),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1)
+
+        # Debounce progress bar (thin colored bar just below the text)
+        bar_y = 35
+        bar_color = ST_BGR[raw_state]
+        cv2.rectangle(dbg, (10, bar_y), (10 + bar_filled, bar_y + 8),
+                      bar_color, -1)
+        cv2.rectangle(dbg, (10, bar_y), (W - 10, bar_y + 8),
+                      (80, 80, 80), 1)
+
         try:
             self.pub_debug.publish(self.bridge.cv2_to_imgmsg(dbg, encoding='bgr8'))
         except Exception as e:
